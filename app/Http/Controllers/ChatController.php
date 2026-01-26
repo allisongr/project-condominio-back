@@ -17,90 +17,108 @@ class ChatController extends Controller
     {
         $validated = $request->validate([
             'remitente_id' => 'required|integer',
-            'destinatario_id' => 'nullable|integer',
+            'destinatario_id' => 'required|integer',
             'id_depa' => 'required|integer',
             'contenido' => 'required|string|max:1000',
             'tipo' => 'required|in:personal,departamento,general',
         ]);
 
-        $mensaje = Mensaje::create([
-            'remitente_id' => $validated['remitente_id'],
-            'destinatario_id' => $validated['destinatario_id'],
-            'id_depa' => $validated['id_depa'],
-            'contenido' => $validated['contenido'],
-            'tipo' => $validated['tipo'],
-            'leido' => false,
-            'fecha' => now(),
-        ]);
+        try {
+            $mensaje = Mensaje::create([
+                'remitente' => $validated['remitente_id'],
+                'destinatario' => $validated['destinatario_id'],
+                'id_depaR' => $validated['id_depa'],
+                'id_depaD' => $validated['id_depa'],
+                'mensaje' => $validated['contenido'],
+                'tipo' => $validated['tipo'],
+                'leido' => false,
+                'fecha' => now(),
+            ]);
 
-        // Broadcast the message to connected users
-        MensajeEnviado::dispatch($mensaje);
+            // Broadcast the message to connected users
+            MensajeEnviado::dispatch($mensaje);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Mensaje enviado',
-            'data' => [
-                'id' => (string)$mensaje->_id,
-                'remitente_id' => $mensaje->remitente_id,
-                'contenido' => $mensaje->contenido,
-                'fecha' => $mensaje->fecha,
-            ]
-        ], 201);
+            return response()->json([
+                'success' => true,
+                'message' => 'Mensaje enviado',
+                'data' => [
+                    'id' => (string)$mensaje->_id,
+                    'remitente_id' => $mensaje->remitente,
+                    'contenido' => $mensaje->mensaje,
+                    'fecha' => $mensaje->fecha,
+                ]
+            ], 201);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => $e->getMessage(),
+                'message' => 'Error al enviar mensaje'
+            ], 500);
+        }
     }
 
     /**
      * Get messages for a departamento
      */
-    public function getMessages(Request $request, $id_depa): JsonResponse
+    public function getMessages(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'page' => 'nullable|integer|min:1',
-            'per_page' => 'nullable|integer|min:1|max:50',
-            'usuario_id' => 'nullable|integer',
-        ]);
+        try {
+            $validated = $request->validate([
+                'id_depa' => 'required|integer',
+                'contacto_id' => 'nullable|integer',
+                'page' => 'nullable|integer|min:1',
+                'per_page' => 'nullable|integer|min:1|max:50',
+            ]);
 
-        $page = $validated['page'] ?? 1;
-        $per_page = $validated['per_page'] ?? 20;
-        $skip = ($page - 1) * $per_page;
+            $page = $validated['page'] ?? 1;
+            $per_page = $validated['per_page'] ?? 50;
+            $skip = ($page - 1) * $per_page;
 
-        $query = Mensaje::where('id_depa', $id_depa)
-            ->orderBy('fecha', 'desc');
-
-        // If usuario_id provided, filter personal messages
-        if (isset($validated['usuario_id'])) {
-            $query->where(function ($q) use ($validated) {
-                $q->where('remitente_id', $validated['usuario_id'])
-                  ->orWhere('destinatario_id', $validated['usuario_id']);
+            $query = Mensaje::where(function ($q) use ($validated) {
+                $q->where('id_depaR', $validated['id_depa'])
+                  ->orWhere('id_depaD', $validated['id_depa']);
             });
+
+            // If contacto_id provided, filter personal messages between two users
+            if (isset($validated['contacto_id']) && $validated['contacto_id']) {
+                $usuarioActualId = $validated['usuario_id'] ?? 999;
+                
+                $query->where(function ($q) use ($validated, $usuarioActualId) {
+                    // Messages between current user and contacto
+                    $q->where(function ($subQ) use ($validated, $usuarioActualId) {
+                        $subQ->where('remitente', $usuarioActualId)
+                             ->where('destinatario', $validated['contacto_id']);
+                    })->orWhere(function ($subQ) use ($validated, $usuarioActualId) {
+                        $subQ->where('remitente', $validated['contacto_id'])
+                             ->where('destinatario', $usuarioActualId);
+                    });
+                });
+            }
+
+            $total = $query->count();
+            $mensajes = $query->orderBy('fecha', 'asc')
+                ->skip($skip)
+                ->take($per_page)
+                ->get()
+                ->map(function ($mensaje) {
+                    return [
+                        'id' => (string)$mensaje->_id,
+                        'remitente_id' => $mensaje->remitente,
+                        'destinatario_id' => $mensaje->destinatario,
+                        'contenido' => $mensaje->mensaje,
+                        'tipo' => $mensaje->tipo,
+                        'id_depa' => $mensaje->id_depaR,
+                        'leido' => $mensaje->leido,
+                        'fecha' => $mensaje->fecha,
+                    ];
+                });
+
+            return response()->json($mensajes);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => $e->getMessage(),
+                'message' => 'Error al obtener mensajes'
+            ], 500);
         }
-
-        $total = $query->count();
-        $mensajes = $query->skip($skip)
-            ->take($per_page)
-            ->get()
-            ->map(function ($mensaje) {
-                return [
-                    'id' => (string)$mensaje->_id,
-                    'remitente_id' => $mensaje->remitente_id,
-                    'destinatario_id' => $mensaje->destinatario_id,
-                    'contenido' => $mensaje->contenido,
-                    'tipo' => $mensaje->tipo,
-                    'id_depa' => $mensaje->id_depa,
-                    'leido' => $mensaje->leido,
-                    'fecha' => $mensaje->fecha,
-                ];
-            });
-
-        return response()->json([
-            'success' => true,
-            'data' => $mensajes,
-            'pagination' => [
-                'total' => $total,
-                'page' => $page,
-                'per_page' => $per_page,
-                'pages' => ceil($total / $per_page),
-            ]
-        ]);
     }
 
     /**
@@ -134,23 +152,29 @@ class ChatController extends Controller
      */
     public function typing(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'usuario_id' => 'required|integer',
-            'id_depa' => 'required|integer',
-            'nombre_usuario' => 'required|string',
-        ]);
+        try {
+            $validated = $request->validate([
+                'usuario_id' => 'required|integer',
+                'destinatario_id' => 'required|integer',
+                'id_depa' => 'required|integer',
+            ]);
 
-        // Broadcast the typing event
-        UsuarioEscribiendo::dispatch(
-            $validated['usuario_id'],
-            $validated['id_depa'],
-            $validated['nombre_usuario']
-        );
+            // Broadcast the typing event
+            UsuarioEscribiendo::dispatch(
+                $validated['usuario_id'],
+                $validated['destinatario_id'],
+                $validated['id_depa']
+            );
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Typing indicator enviado'
-        ]);
+            return response()->json([
+                'success' => true,
+                'message' => 'Typing indicator enviado'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**

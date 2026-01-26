@@ -1,0 +1,30 @@
+{
+    "authHost": "http://localhost",
+    "authEndpoint": "/broadcasting/auth",
+    "clients": [],
+    "database": "sqlite",
+    "databaseConfig": {},
+    "devMode": true,
+    "host": "0.0.0.0",
+    "port": "6001",
+    "protocol": "http",
+    "socketio": {},
+    "sslCertPath": "",
+    "sslKeyPath": "",
+    "sslPassphrase": "",
+    "subscribers": {
+        "http": true,
+        "redis": false
+    },
+    "secureOptions": 67108864,
+    "referrers": [],
+    "trustProxy": false,
+    "allowCors": true,
+    "allowOrigins": [
+        "localhost:5173",
+        "localhost:5174",
+        "127.0.0.1:5173",
+        "127.0.0.1:5174",
+        "localhost:8000"
+    ]
+}

@@ -30,11 +30,11 @@ class MensajeEnviado implements ShouldBroadcast
      */
     public function broadcastOn(): Channel
     {
-        // Broadcast to specific departamento channel
+        // Broadcast to private channel between remitente and destinatario
         if ($this->mensaje->tipo === 'personal') {
-            return new PrivateChannel('chat.personal.' . $this->mensaje->id_depa);
+            return new PrivateChannel('chat.' . $this->mensaje->remitente . '.' . $this->mensaje->destinatario);
         } else {
-            return new PrivateChannel('chat.departamento.' . $this->mensaje->id_depa);
+            return new PrivateChannel('chat.departamento.' . $this->mensaje->id_depaR);
         }
     }
 
@@ -45,11 +45,11 @@ class MensajeEnviado implements ShouldBroadcast
     {
         return [
             'id' => (string)$this->mensaje->_id,
-            'remitente_id' => $this->mensaje->remitente_id,
-            'destinatario_id' => $this->mensaje->destinatario_id,
-            'contenido' => $this->mensaje->contenido,
+            'remitente_id' => $this->mensaje->remitente,
+            'destinatario_id' => $this->mensaje->destinatario,
+            'contenido' => $this->mensaje->mensaje,
             'tipo' => $this->mensaje->tipo,
-            'id_depa' => $this->mensaje->id_depa,
+            'id_depa' => $this->mensaje->id_depaR,
             'leido' => $this->mensaje->leido,
             'fecha' => $this->mensaje->fecha,
         ];
