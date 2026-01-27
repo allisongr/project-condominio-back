@@ -23,6 +23,13 @@ class MensajeEnviado implements ShouldBroadcast
     public function __construct(Mensaje $mensaje)
     {
         $this->mensaje = $mensaje;
+        
+        \Log::info('Evento MensajeEnviado creado', [
+            'remitente' => $mensaje->remitente,
+            'destinatario' => $mensaje->destinatario,
+            'tipo' => $mensaje->tipo,
+            'id_depaR' => $mensaje->id_depaR,
+        ]);
     }
 
     /**
@@ -32,9 +39,13 @@ class MensajeEnviado implements ShouldBroadcast
     {
         // Broadcast to private channel between remitente and destinatario
         if ($this->mensaje->tipo === 'personal') {
-            return new PrivateChannel('chat.' . $this->mensaje->remitente . '.' . $this->mensaje->destinatario);
+            $channel = 'chat.' . $this->mensaje->remitente . '.' . $this->mensaje->destinatario;
+            \Log::info('Broadcasting mensaje a canal personal', ['channel' => $channel]);
+            return new PrivateChannel($channel);
         } else {
-            return new PrivateChannel('chat.departamento.' . $this->mensaje->id_depaR);
+            $channel = 'chat.departamento.' . $this->mensaje->id_depaR;
+            \Log::info('Broadcasting mensaje a canal departamento', ['channel' => $channel]);
+            return new PrivateChannel($channel);
         }
     }
 
