@@ -6,6 +6,7 @@ use App\Models\Usuario;
 use App\Models\Persona;
 use App\Models\PerDep;
 use App\Models\Departamento;
+use App\Models\Mensaje;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
@@ -34,6 +35,19 @@ class UsuarioController extends Controller
                     $persona = Persona::find($usuario->id_persona);
                     $perDep = PerDep::where('id_persona', $usuario->id_persona)->first();
 
+                    // Obtener el último mensaje con este contacto
+                    $ultimoMensaje = Mensaje::where(function($query) use ($usuarioActualId, $usuario) {
+                        $query->where(function($q) use ($usuarioActualId, $usuario) {
+                            $q->where('remitente', $usuarioActualId)
+                              ->where('destinatario', $usuario->id);
+                        })->orWhere(function($q) use ($usuarioActualId, $usuario) {
+                            $q->where('remitente', $usuario->id)
+                              ->where('destinatario', $usuarioActualId);
+                        });
+                    })
+                    ->orderBy('fecha', 'desc')
+                    ->first();
+
                     $contactos[] = [
                         'id' => $usuario->id,
                         'nombre' => $persona?->nombre ?? 'N/A',
@@ -41,13 +55,21 @@ class UsuarioController extends Controller
                         'email' => $persona?->celular ?? 'N/A',
                         'depa' => $perDep?->id_depa ?? 101,
                         'online' => true,
-                        'mensaje' => 'Sin mensajes',
+                        'mensaje' => $ultimoMensaje?->mensaje ?? 'Sin mensajes',
+                        'ultima_fecha' => $ultimoMensaje?->fecha ?? null,
                     ];
                 } catch (\Exception $e) {
                     \Log::error('Error procesando usuario ' . $usuario->id . ': ' . $e->getMessage());
                     continue;
                 }
             }
+
+            // Ordenar contactos por última fecha de mensaje (más reciente primero)
+            usort($contactos, function($a, $b) {
+                if (!$a['ultima_fecha']) return 1;
+                if (!$b['ultima_fecha']) return -1;
+                return strtotime($b['ultima_fecha']) - strtotime($a['ultima_fecha']);
+            });
 
             return response()->json($contactos);
         } catch (\Exception $e) {
