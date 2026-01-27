@@ -9,6 +9,7 @@ class Usuario extends Model
 {
     protected $fillable = [
         'id_persona',
+        'email',
         'pass',
         'admin',
     ];

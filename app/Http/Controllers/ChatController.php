@@ -25,14 +25,24 @@ class ChatController extends Controller
 
         try {
             $mensaje = Mensaje::create([
-                'remitente' => $validated['remitente_id'],
-                'destinatario' => $validated['destinatario_id'],
-                'id_depaR' => $validated['id_depa'],
-                'id_depaD' => $validated['id_depa'],
+                'remitente' => (int)$validated['remitente_id'],
+                'destinatario' => (int)$validated['destinatario_id'],
+                'id_depaR' => (int)$validated['id_depa'],
+                'id_depaD' => (int)$validated['id_depa'],
                 'mensaje' => $validated['contenido'],
                 'tipo' => $validated['tipo'],
                 'leido' => false,
                 'fecha' => now(),
+            ]);
+
+            \Log::info('Mensaje guardado en MongoDB', [
+                '_id' => $mensaje->_id,
+                'remitente' => $mensaje->remitente,
+                'destinatario' => $mensaje->destinatario,
+                'id_depaR' => $mensaje->id_depaR,
+                'id_depaD' => $mensaje->id_depaD,
+                'mensaje' => $mensaje->mensaje,
+                'fecha' => $mensaje->fecha,
             ]);
 
             // Broadcast the message to connected users
@@ -44,15 +54,65 @@ class ChatController extends Controller
                 'data' => [
                     'id' => (string)$mensaje->_id,
                     'remitente_id' => $mensaje->remitente,
+                    'destinatario_id' => $mensaje->destinatario,
                     'contenido' => $mensaje->mensaje,
                     'fecha' => $mensaje->fecha,
+                    'id_depaR' => $mensaje->id_depaR,
+                    'id_depaD' => $mensaje->id_depaD,
                 ]
             ], 201);
         } catch (\Exception $e) {
+            \Log::error('Error al enviar mensaje: ' . $e->getMessage());
+            \Log::error($e->getTraceAsString());
             return response()->json([
                 'error' => $e->getMessage(),
                 'message' => 'Error al enviar mensaje'
             ], 500);
+        }
+    }
+
+    /**
+     * Debug endpoint - Check if messages exist in MongoDB
+     */
+    public function debugMessages(): JsonResponse
+    {
+        try {
+            $total = Mensaje::count();
+            $allMessages = Mensaje::orderBy('fecha', 'asc')->get();
+            
+            return response()->json([
+                'total_messages' => $total,
+                'messages' => $allMessages->map(function ($msg) {
+                    return [
+                        '_id' => (string)$msg->_id,
+                        'remitente' => $msg->remitente,
+                        'destinatario' => $msg->destinatario,
+                        'mensaje' => $msg->mensaje,
+                        'fecha' => $msg->fecha,
+                        'tipo' => $msg->tipo,
+                        'id_depaR' => $msg->id_depaR,
+                        'id_depaD' => $msg->id_depaD,
+                    ];
+                }),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Debug endpoint - Clear all test messages
+     */
+    public function clearDebugMessages(): JsonResponse
+    {
+        try {
+            $deleted = Mensaje::delete();
+            return response()->json([
+                'deleted' => $deleted,
+                'message' => 'All messages deleted'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
         }
     }
 
@@ -62,40 +122,50 @@ class ChatController extends Controller
     public function getMessages(Request $request): JsonResponse
     {
         try {
-            $validated = $request->validate([
-                'id_depa' => 'required|integer',
-                'contacto_id' => 'nullable|integer',
-                'page' => 'nullable|integer|min:1',
-                'per_page' => 'nullable|integer|min:1|max:50',
-            ]);
-
-            $page = $validated['page'] ?? 1;
-            $per_page = $validated['per_page'] ?? 50;
+            $id_depa = (int)$request->query('id_depa');
+            $contacto_id = (int)$request->query('contacto_id');
+            $usuario_id = (int)($request->query('usuario_id') ?? 999);
+            $page = (int)($request->query('page') ?? 1);
+            $per_page = (int)($request->query('per_page') ?? 50);
             $skip = ($page - 1) * $per_page;
 
-            $query = Mensaje::where(function ($q) use ($validated) {
-                $q->where('id_depaR', $validated['id_depa'])
-                  ->orWhere('id_depaD', $validated['id_depa']);
-            });
+            \Log::info('Parámetros procesados (casted to int)', [
+                'id_depa' => $id_depa,
+                'contacto_id' => $contacto_id,
+                'usuario_id' => $usuario_id,
+            ]);
 
-            // If contacto_id provided, filter personal messages between two users
-            if (isset($validated['contacto_id']) && $validated['contacto_id']) {
-                $usuarioActualId = $validated['usuario_id'] ?? 999;
-                
-                $query->where(function ($q) use ($validated, $usuarioActualId) {
-                    // Messages between current user and contacto
-                    $q->where(function ($subQ) use ($validated, $usuarioActualId) {
-                        $subQ->where('remitente', $usuarioActualId)
-                             ->where('destinatario', $validated['contacto_id']);
-                    })->orWhere(function ($subQ) use ($validated, $usuarioActualId) {
-                        $subQ->where('remitente', $validated['contacto_id'])
-                             ->where('destinatario', $usuarioActualId);
+            // Query para obtener mensajes
+            $query = Mensaje::query();
+
+            // Si hay contacto_id, filtrar mensajes entre dos usuarios
+            if ($contacto_id) {
+                \Log::info('Filtrando por contacto_id: ' . $contacto_id);
+                $query->where(function ($q) use ($usuario_id, $contacto_id) {
+                    // Mensajes enviados por usuario_id a contacto_id
+                    $q->where(function ($subQ) use ($usuario_id, $contacto_id) {
+                        $subQ->where('remitente', $usuario_id)
+                             ->where('destinatario', $contacto_id);
+                    })
+                    // O mensajes enviados por contacto_id a usuario_id
+                    ->orWhere(function ($subQ) use ($usuario_id, $contacto_id) {
+                        $subQ->where('remitente', $contacto_id)
+                             ->where('destinatario', $usuario_id);
                     });
+                });
+            } elseif ($id_depa) {
+                \Log::info('Filtrando por id_depa: ' . $id_depa);
+                // Si no hay contacto_id, filtrar por departamento
+                $query->where(function ($q) use ($id_depa) {
+                    $q->where('id_depaR', $id_depa)
+                      ->orWhere('id_depaD', $id_depa);
                 });
             }
 
             $total = $query->count();
-            $mensajes = $query->orderBy('fecha', 'asc')
+            \Log::info('Total de mensajes encontrados: ' . $total);
+            
+            $resultado = $query->orderBy('fecha', 'asc')
                 ->skip($skip)
                 ->take($per_page)
                 ->get()
@@ -112,8 +182,12 @@ class ChatController extends Controller
                     ];
                 });
 
-            return response()->json($mensajes);
+            \Log::info('Resultado mapeado', ['count' => $resultado->count()]);
+
+            return response()->json($resultado);
         } catch (\Exception $e) {
+            \Log::error('Error en getMessages: ' . $e->getMessage());
+            \Log::error($e->getTraceAsString());
             return response()->json([
                 'error' => $e->getMessage(),
                 'message' => 'Error al obtener mensajes'
