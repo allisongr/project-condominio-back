@@ -23,6 +23,13 @@ class MensajeEnviado implements ShouldBroadcast
     public function __construct(Mensaje $mensaje)
     {
         $this->mensaje = $mensaje;
+        
+        \Log::info('Evento MensajeEnviado creado', [
+            'remitente' => $mensaje->remitente,
+            'destinatario' => $mensaje->destinatario,
+            'tipo' => $mensaje->tipo,
+            'id_depaR' => $mensaje->id_depaR,
+        ]);
     }
 
     /**
@@ -30,11 +37,15 @@ class MensajeEnviado implements ShouldBroadcast
      */
     public function broadcastOn(): Channel
     {
-        // Broadcast to specific departamento channel
+        // Broadcast to private channel between remitente and destinatario
         if ($this->mensaje->tipo === 'personal') {
-            return new PrivateChannel('chat.personal.' . $this->mensaje->id_depa);
+            $channel = 'chat.' . $this->mensaje->remitente . '.' . $this->mensaje->destinatario;
+            \Log::info('Broadcasting mensaje a canal personal', ['channel' => $channel]);
+            return new PrivateChannel($channel);
         } else {
-            return new PrivateChannel('chat.departamento.' . $this->mensaje->id_depa);
+            $channel = 'chat.departamento.' . $this->mensaje->id_depaR;
+            \Log::info('Broadcasting mensaje a canal departamento', ['channel' => $channel]);
+            return new PrivateChannel($channel);
         }
     }
 
@@ -45,11 +56,11 @@ class MensajeEnviado implements ShouldBroadcast
     {
         return [
             'id' => (string)$this->mensaje->_id,
-            'remitente_id' => $this->mensaje->remitente_id,
-            'destinatario_id' => $this->mensaje->destinatario_id,
-            'contenido' => $this->mensaje->contenido,
+            'remitente_id' => $this->mensaje->remitente,
+            'destinatario_id' => $this->mensaje->destinatario,
+            'contenido' => $this->mensaje->mensaje,
             'tipo' => $this->mensaje->tipo,
-            'id_depa' => $this->mensaje->id_depa,
+            'id_depa' => $this->mensaje->id_depaR,
             'leido' => $this->mensaje->leido,
             'fecha' => $this->mensaje->fecha,
         ];

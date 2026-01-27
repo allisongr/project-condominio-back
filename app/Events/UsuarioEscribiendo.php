@@ -15,17 +15,17 @@ class UsuarioEscribiendo implements ShouldBroadcast
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     public $usuario_id;
+    public $destinatario_id;
     public $id_depa;
-    public $nombre_usuario;
 
     /**
      * Create a new event instance.
      */
-    public function __construct($usuario_id, $id_depa, $nombre_usuario)
+    public function __construct($usuario_id, $destinatario_id, $id_depa)
     {
         $this->usuario_id = $usuario_id;
+        $this->destinatario_id = $destinatario_id;
         $this->id_depa = $id_depa;
-        $this->nombre_usuario = $nombre_usuario;
     }
 
     /**
@@ -33,7 +33,7 @@ class UsuarioEscribiendo implements ShouldBroadcast
      */
     public function broadcastOn(): Channel
     {
-        return new PrivateChannel('chat.departamento.' . $this->id_depa);
+        return new PrivateChannel('typing.' . $this->usuario_id . '.' . $this->destinatario_id);
     }
 
     /**
@@ -43,7 +43,7 @@ class UsuarioEscribiendo implements ShouldBroadcast
     {
         return [
             'usuario_id' => $this->usuario_id,
-            'nombre_usuario' => $this->nombre_usuario,
+            'destinatario_id' => $this->destinatario_id,
             'id_depa' => $this->id_depa,
         ];
     }
