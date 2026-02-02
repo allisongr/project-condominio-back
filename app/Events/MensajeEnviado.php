@@ -7,11 +7,11 @@ use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Broadcasting\PrivateChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class MensajeEnviado implements ShouldBroadcast
+class MensajeEnviado implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
@@ -35,17 +35,26 @@ class MensajeEnviado implements ShouldBroadcast
     /**
      * Get the channels the event should broadcast on.
      */
-    public function broadcastOn(): Channel
+    public function broadcastOn(): array
     {
         // Broadcast to private channel between remitente and destinatario
         if ($this->mensaje->tipo === 'personal') {
-            $channel = 'chat.' . $this->mensaje->remitente . '.' . $this->mensaje->destinatario;
-            \Log::info('Broadcasting mensaje a canal personal', ['channel' => $channel]);
-            return new PrivateChannel($channel);
+            $channel1 = 'chat.' . $this->mensaje->remitente . '.' . $this->mensaje->destinatario;
+            $channel2 = 'chat.' . $this->mensaje->destinatario . '.' . $this->mensaje->remitente;
+            
+            \Log::info('Broadcasting mensaje a canales personales', [
+                'channel1' => $channel1,
+                'channel2' => $channel2
+            ]);
+            
+            return [
+                new PrivateChannel($channel1),
+                new PrivateChannel($channel2),
+            ];
         } else {
             $channel = 'chat.departamento.' . $this->mensaje->id_depaR;
             \Log::info('Broadcasting mensaje a canal departamento', ['channel' => $channel]);
-            return new PrivateChannel($channel);
+            return [new PrivateChannel($channel)];
         }
     }
 
