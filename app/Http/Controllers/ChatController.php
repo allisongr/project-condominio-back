@@ -35,17 +35,6 @@ class ChatController extends Controller
                 'fecha' => now(),
             ]);
 
-            \Log::info('Mensaje guardado en MongoDB', [
-                '_id' => $mensaje->_id,
-                'remitente' => $mensaje->remitente,
-                'destinatario' => $mensaje->destinatario,
-                'id_depaR' => $mensaje->id_depaR,
-                'id_depaD' => $mensaje->id_depaD,
-                'mensaje' => $mensaje->mensaje,
-                'fecha' => $mensaje->fecha,
-            ]);
-
-            // Broadcast the message to connected users
             MensajeEnviado::dispatch($mensaje);
 
             return response()->json([
@@ -129,33 +118,20 @@ class ChatController extends Controller
             $per_page = (int)($request->query('per_page') ?? 50);
             $skip = ($page - 1) * $per_page;
 
-            \Log::info('Parámetros procesados (casted to int)', [
-                'id_depa' => $id_depa,
-                'contacto_id' => $contacto_id,
-                'usuario_id' => $usuario_id,
-            ]);
-
-            // Query para obtener mensajes
             $query = Mensaje::query();
 
-            // Si hay contacto_id, filtrar mensajes entre dos usuarios
             if ($contacto_id) {
-                \Log::info('Filtrando por contacto_id: ' . $contacto_id);
                 $query->where(function ($q) use ($usuario_id, $contacto_id) {
-                    // Mensajes enviados por usuario_id a contacto_id
                     $q->where(function ($subQ) use ($usuario_id, $contacto_id) {
                         $subQ->where('remitente', $usuario_id)
                              ->where('destinatario', $contacto_id);
                     })
-                    // O mensajes enviados por contacto_id a usuario_id
                     ->orWhere(function ($subQ) use ($usuario_id, $contacto_id) {
                         $subQ->where('remitente', $contacto_id)
                              ->where('destinatario', $usuario_id);
                     });
                 });
             } elseif ($id_depa) {
-                \Log::info('Filtrando por id_depa: ' . $id_depa);
-                // Si no hay contacto_id, filtrar por departamento
                 $query->where(function ($q) use ($id_depa) {
                     $q->where('id_depaR', $id_depa)
                       ->orWhere('id_depaD', $id_depa);
@@ -163,7 +139,6 @@ class ChatController extends Controller
             }
 
             $total = $query->count();
-            \Log::info('Total de mensajes encontrados: ' . $total);
             
             $resultado = $query->orderBy('fecha', 'asc')
                 ->skip($skip)
@@ -181,8 +156,6 @@ class ChatController extends Controller
                         'fecha' => $mensaje->fecha,
                     ];
                 });
-
-            \Log::info('Resultado mapeado', ['count' => $resultado->count()]);
 
             return response()->json($resultado);
         } catch (\Exception $e) {

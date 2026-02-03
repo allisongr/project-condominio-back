@@ -18,8 +18,8 @@ class UsuarioController extends Controller
     public function getContactos(Request $request): JsonResponse
     {
         try {
-            // Obtener el usuario actual
-            $usuarioActualId = $request->user()?->id ?? 1;
+            // Obtener el usuario actual desde la solicitud o el parámetro
+            $usuarioActualId = $request->input('usuario_actual_id') ?? $request->user()?->id ?? 1;
 
             // Obtener todos los usuarios
             $usuarios = Usuario::all();
