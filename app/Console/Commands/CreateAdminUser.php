@@ -41,14 +41,14 @@ class CreateAdminUser extends Command
         
         // Verificar si el email ya existe
         if (Usuario::where('email', $email)->exists()) {
-            $this->error("❌ El email '$email' ya está registrado.");
+            $this->error("[ERROR] El email '$email' ya está registrado.");
             return Command::FAILURE;
         }
 
         $password = $this->option('password') ?? $this->secret('Contraseña (mínimo 6 caracteres)');
         
         if (strlen($password) < 6) {
-            $this->error('❌ La contraseña debe tener al menos 6 caracteres.');
+            $this->error('[ERROR] La contraseña debe tener al menos 6 caracteres.');
             return Command::FAILURE;
         }
 
@@ -81,7 +81,7 @@ class CreateAdminUser extends Command
 
             $this->newLine();
             $this->info('===========================================');
-            $this->info('✅ ¡Administrador creado exitosamente!');
+            $this->info('[EXITO] Administrador creado exitosamente');
             $this->info('===========================================');
             $this->newLine();
             $this->table(
@@ -91,8 +91,8 @@ class CreateAdminUser extends Command
                     ['Nombre', $persona->nombre . ' ' . $persona->apellido_p],
                     ['Email', $usuario->email],
                     ['Rol', 'Administrador'],
-                    ['Email Verificado', '✓ Sí'],
-                    ['Activo', '✓ Sí'],
+                    ['Email Verificado', 'Si'],
+                    ['Activo', 'Si'],
                 ]
             );
             $this->newLine();
@@ -100,7 +100,7 @@ class CreateAdminUser extends Command
             
             return Command::SUCCESS;
         } catch (\Exception $e) {
-            $this->error('❌ Error al crear el administrador: ' . $e->getMessage());
+            $this->error('[ERROR] Error al crear el administrador: ' . $e->getMessage());
             return Command::FAILURE;
         }
     }
