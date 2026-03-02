@@ -18,6 +18,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // Auth routes
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
+    Route::post('/auth/logout-all-devices', [AuthController::class, 'logoutAllDevices']);
+    Route::get('/auth/devices', [AuthController::class, 'getDevices']);
 
     // Admin routes (protected by admin middleware)
     Route::middleware('admin')->prefix('admin')->group(function () {

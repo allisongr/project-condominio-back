@@ -192,6 +192,8 @@ class AdminController extends Controller
             }
             if (isset($validated['password'])) {
                 $updateData['pass'] = bcrypt($validated['password']);
+                // Eliminar todos los tokens del usuario (cerrar sesión en todos los dispositivos)
+                $usuario->tokens()->delete();
             }
             if (isset($validated['admin'])) {
                 $updateData['admin'] = $validated['admin'];

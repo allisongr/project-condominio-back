@@ -57,8 +57,9 @@ class AuthController extends Controller
                 ], 403);
             }
 
-            // Crear token de Sanctum
-            $token = $usuario->createToken('auth-token')->plainTextToken;
+            // Generar un identificador único del dispositivo basado en User-Agent
+            $deviceName = $this->getDeviceName($request->header('User-Agent'));
+            $token = $usuario->createToken($deviceName)->plainTextToken;
 
             return response()->json([
                 'success' => true,
@@ -173,5 +174,97 @@ class AuthController extends Controller
                 'message' => $e->getMessage(),
             ], 422);
         }
+    }
+
+    /**
+     * Cerrar sesión en todos los dispositivos (eliminar todos los tokens)
+     */
+    public function logoutAllDevices(Request $request): JsonResponse
+    {
+        try {
+            // Eliminar todos los tokens del usuario
+            $request->user()->tokens()->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Sesión cerrada en todos los dispositivos',
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error al cerrar sesión en todos los dispositivos: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Obtener lista de dispositivos activos (tokens)
+     */
+    public function getDevices(Request $request): JsonResponse
+    {
+        try {
+            $usuario = $request->user();
+            $currentToken = $request->bearerToken();
+
+            $devices = $usuario->tokens->map(function ($token) use ($currentToken) {
+                return [
+                    'id' => $token->id,
+                    'nombre' => $token->name,
+                    'last_used_at' => $token->last_used_at,
+                    'created_at' => $token->created_at,
+                    'is_current' => $token->plainTextToken === $currentToken,
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'devices' => $devices,
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error al obtener dispositivos: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Obtener un nombre legible del dispositivo basado en User-Agent
+     */
+    private function getDeviceName(?string $userAgent): string
+    {
+        if (!$userAgent) {
+            return 'Dispositivo desconocido';
+        }
+
+        // Detectar sistema operativo
+        $os = 'Desconocido';
+        if (stripos($userAgent, 'windows') !== false) {
+            $os = 'Windows';
+        } elseif (stripos($userAgent, 'mac') !== false) {
+            $os = 'macOS';
+        } elseif (stripos($userAgent, 'linux') !== false) {
+            $os = 'Linux';
+        } elseif (stripos($userAgent, 'android') !== false) {
+            $os = 'Android';
+        } elseif (stripos($userAgent, 'iphone') !== false || stripos($userAgent, 'ipad') !== false) {
+            $os = 'iOS';
+        }
+
+        // Detectar navegador
+        $browser = 'Navegador desconocido';
+        if (stripos($userAgent, 'firefox') !== false) {
+            $browser = 'Firefox';
+        } elseif (stripos($userAgent, 'chrome') !== false) {
+            $browser = 'Chrome';
+        } elseif (stripos($userAgent, 'safari') !== false) {
+            $browser = 'Safari';
+        } elseif (stripos($userAgent, 'edge') !== false) {
+            $browser = 'Edge';
+        }
+
+        return "{$browser} en {$os}";
     }
 }
