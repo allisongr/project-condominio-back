@@ -8,6 +8,7 @@ use App\Models\PerDep;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Controlador de Autenticación
@@ -57,8 +58,9 @@ class AuthController extends Controller
                 ], 403);
             }
 
-            // Crear token de Sanctum
-            $token = $usuario->createToken('auth-token')->plainTextToken;
+            // Generar un identificador único del dispositivo basado en User-Agent
+            $deviceName = $this->getDeviceName($request->header('User-Agent'));
+            $token = $usuario->createToken($deviceName)->plainTextToken;
 
             return response()->json([
                 'success' => true,
@@ -173,5 +175,231 @@ class AuthController extends Controller
                 'message' => $e->getMessage(),
             ], 422);
         }
+    }
+
+    /**
+     * Cerrar sesión en todos los dispositivos (eliminar todos los tokens)
+     */
+    public function logoutAllDevices(Request $request): JsonResponse
+    {
+        try {
+            $usuario = $request->user();
+
+            // Método 1: Eliminar usando la relación de Eloquent
+            $tokensDeleted = $usuario->tokens()->delete();
+            
+            // Método 2: Verificar con query directo
+            $stillRemaining = DB::table('personal_access_tokens')
+                ->where('tokenable_id', $usuario->id)
+                ->where('tokenable_type', 'App\\Models\\Usuario')
+                ->count();
+
+            // Si aún quedan tokens, borrarlos con query directo
+            if ($stillRemaining > 0) {
+                DB::table('personal_access_tokens')
+                    ->where('tokenable_id', $usuario->id)
+                    ->where('tokenable_type', 'App\\Models\\Usuario')
+                    ->delete();
+                    
+                \Log::warning('Query directo necesario para borrar tokens en logoutAllDevices - Usuario: ' . $usuario->id);
+            }
+
+            \Log::info('Logged out from all devices - User: ' . $usuario->id . ' (deleted: ' . $tokensDeleted . ')');
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Sesión cerrada en todos los dispositivos',
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error al cerrar sesión en todos los dispositivos: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Obtener lista de dispositivos activos (tokens)
+     */
+    public function getDevices(Request $request): JsonResponse
+    {
+        try {
+            $usuario = $request->user();
+            $currentToken = $request->bearerToken();
+
+            $devices = $usuario->tokens->map(function ($token) use ($currentToken) {
+                return [
+                    'id' => $token->id,
+                    'nombre' => $token->name,
+                    'last_used_at' => $token->last_used_at,
+                    'created_at' => $token->created_at,
+                    'is_current' => $token->plainTextToken === $currentToken,
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'devices' => $devices,
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error al obtener dispositivos: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Eliminar un dispositivo específico (token)
+     */
+    public function deleteDevice(Request $request, $deviceId): JsonResponse
+    {
+        try {
+            $usuario = $request->user();
+            $currentToken = $request->bearerToken();
+
+            // Obtener el token a eliminar
+            $token = $usuario->tokens()->find($deviceId);
+
+            if (!$token) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Dispositivo no encontrado',
+                ], 404);
+            }
+
+            // No permitir eliminar el dispositivo actual
+            if ($token->plainTextToken === $currentToken) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No puedes eliminar el dispositivo actual',
+                ], 422);
+            }
+
+            // Eliminar el token
+            $token->delete();
+
+            \Log::info('Dispositivo eliminado - Usuario: ' . $usuario->id . ', Token ID: ' . $deviceId);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Dispositivo eliminado exitosamente',
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error al eliminar dispositivo: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Cambiar contraseña del usuario autenticado
+     */
+    public function changePassword(Request $request): JsonResponse
+    {
+        try {
+            $validated = $request->validate([
+                'current_password' => 'required|string',
+                'new_password' => 'required|string|min:6|confirmed',
+            ]);
+
+            $usuario = $request->user();
+
+            // Verificar que la contraseña actual es correcta
+            if (!Hash::check($validated['current_password'], $usuario->pass)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'La contraseña actual es incorrecta',
+                ], 401);
+            }
+
+            // Evitar usar la misma contraseña
+            if (Hash::check($validated['new_password'], $usuario->pass)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'La nueva contraseña debe ser diferente a la actual',
+                ], 422);
+            }
+
+            // Actualizar contraseña
+            $usuario->update([
+                'pass' => Hash::make($validated['new_password']),
+            ]);
+
+            // Cerrar sesión en TODOS los dispositivos de forma más agresiva
+            // Método 1: Eliminar usando la relación de Eloquent (forma estándar Sanctum)
+            $tokensDeleted = $usuario->tokens()->delete();
+            
+            // Método 2: Verificar con query directo por si acaso la relación tiene caché
+            $stillRemaining = DB::table('personal_access_tokens')
+                ->where('tokenable_id', $usuario->id)
+                ->where('tokenable_type', 'App\\Models\\Usuario')
+                ->count();
+
+            // Si aún quedan tokens, borrarlos con query directo
+            if ($stillRemaining > 0) {
+                DB::table('personal_access_tokens')
+                    ->where('tokenable_id', $usuario->id)
+                    ->where('tokenable_type', 'App\\Models\\Usuario')
+                    ->delete();
+                    
+                \Log::warning('Query directo necesario para borrar tokens - Usuario: ' . $usuario->id);
+            }
+
+            \Log::info('Password changed and all tokens revoked for user: ' . $usuario->id . ' (deleted: ' . $tokensDeleted . ')');
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Contraseña actualizada correctamente. Todas las sesiones han sido cerradas.',
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error al cambiar contraseña: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Obtener un nombre legible del dispositivo basado en User-Agent
+     */
+    private function getDeviceName(?string $userAgent): string
+    {
+        if (!$userAgent) {
+            return 'Dispositivo desconocido';
+        }
+
+        // Detectar sistema operativo
+        $os = 'Desconocido';
+        if (stripos($userAgent, 'windows') !== false) {
+            $os = 'Windows';
+        } elseif (stripos($userAgent, 'mac') !== false) {
+            $os = 'macOS';
+        } elseif (stripos($userAgent, 'linux') !== false) {
+            $os = 'Linux';
+        } elseif (stripos($userAgent, 'android') !== false) {
+            $os = 'Android';
+        } elseif (stripos($userAgent, 'iphone') !== false || stripos($userAgent, 'ipad') !== false) {
+            $os = 'iOS';
+        }
+
+        // Detectar navegador
+        $browser = 'Navegador desconocido';
+        if (stripos($userAgent, 'firefox') !== false) {
+            $browser = 'Firefox';
+        } elseif (stripos($userAgent, 'chrome') !== false) {
+            $browser = 'Chrome';
+        } elseif (stripos($userAgent, 'safari') !== false) {
+            $browser = 'Safari';
+        } elseif (stripos($userAgent, 'edge') !== false) {
+            $browser = 'Edge';
+        }
+
+        return "{$browser} en {$os}";
     }
 }

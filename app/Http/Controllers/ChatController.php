@@ -15,8 +15,17 @@ class ChatController extends Controller
      */
     public function sendMessage(Request $request): JsonResponse
     {
+        // Obtener el usuario autenticado
+        $usuarioAutenticado = $request->user();
+        
+        if (!$usuarioAutenticado) {
+            \Log::error('sendMessage: Usuario no autenticado');
+            return response()->json([
+                'error' => 'No autorizado'
+            ], 401);
+        }
+
         $validated = $request->validate([
-            'remitente_id' => 'required|integer',
             'destinatario_id' => 'required|integer',
             'id_depa' => 'required|integer',
             'contenido' => 'required|string|max:1000',
@@ -24,8 +33,10 @@ class ChatController extends Controller
         ]);
 
         try {
+            $remitente_id = $usuarioAutenticado->id; // Usar usuario autenticado
+
             $mensaje = Mensaje::create([
-                'remitente' => (int)$validated['remitente_id'],
+                'remitente' => (int)$remitente_id,
                 'destinatario' => (int)$validated['destinatario_id'],
                 'id_depaR' => (int)$validated['id_depa'],
                 'id_depaD' => (int)$validated['id_depa'],
@@ -33,6 +44,12 @@ class ChatController extends Controller
                 'tipo' => $validated['tipo'],
                 'leido' => false,
                 'fecha' => now(),
+            ]);
+
+            \Log::info('Mensaje enviado', [
+                'remitente' => $remitente_id,
+                'destinatario' => $validated['destinatario_id'],
+                'mensaje_id' => (string)$mensaje->_id
             ]);
 
             MensajeEnviado::dispatch($mensaje);
@@ -51,11 +68,13 @@ class ChatController extends Controller
                 ]
             ], 201);
         } catch (\Exception $e) {
-            \Log::error('Error al enviar mensaje: ' . $e->getMessage());
-            \Log::error($e->getTraceAsString());
-            return response()->json([
+            \Log::error('Error al enviar mensaje', [
                 'error' => $e->getMessage(),
-                'message' => 'Error al enviar mensaje'
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'error' => 'Error al enviar mensaje',
+                'message' => $e->getMessage()
             ], 500);
         }
     }
@@ -111,12 +130,28 @@ class ChatController extends Controller
     public function getMessages(Request $request): JsonResponse
     {
         try {
+            // Obtener el usuario autenticado
+            $usuarioAutenticado = $request->user();
+            
+            if (!$usuarioAutenticado) {
+                \Log::error('getMessages: Usuario no autenticado');
+                return response()->json([
+                    'error' => 'No autorizado'
+                ], 401);
+            }
+
             $id_depa = (int)$request->query('id_depa');
             $contacto_id = (int)$request->query('contacto_id');
-            $usuario_id = (int)($request->query('usuario_id') ?? 999);
+            $usuario_id = $usuarioAutenticado->id; // Usar user autenticado
             $page = (int)($request->query('page') ?? 1);
             $per_page = (int)($request->query('per_page') ?? 50);
             $skip = ($page - 1) * $per_page;
+
+            \Log::info('getMessages: Consultando', [
+                'usuario_id' => $usuario_id,
+                'contacto_id' => $contacto_id,
+                'id_depa' => $id_depa
+            ]);
 
             $query = Mensaje::query();
 
@@ -157,13 +192,17 @@ class ChatController extends Controller
                     ];
                 });
 
+            \Log::info('getMessages: Retornando', ['count' => $resultado->count()]);
+
             return response()->json($resultado);
         } catch (\Exception $e) {
-            \Log::error('Error en getMessages: ' . $e->getMessage());
-            \Log::error($e->getTraceAsString());
-            return response()->json([
+            \Log::error('Error en getMessages', [
                 'error' => $e->getMessage(),
-                'message' => 'Error al obtener mensajes'
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'error' => 'Error al obtener mensajes',
+                'message' => $e->getMessage()
             ], 500);
         }
     }
@@ -200,15 +239,20 @@ class ChatController extends Controller
     public function typing(Request $request): JsonResponse
     {
         try {
+            $usuarioAutenticado = $request->user();
+            
+            if (!$usuarioAutenticado) {
+                return response()->json(['error' => 'No autorizado'], 401);
+            }
+
             $validated = $request->validate([
-                'usuario_id' => 'required|integer',
                 'destinatario_id' => 'required|integer',
                 'id_depa' => 'required|integer',
             ]);
 
             // Broadcast the typing event
             UsuarioEscribiendo::dispatch(
-                $validated['usuario_id'],
+                $usuarioAutenticado->id,
                 $validated['destinatario_id'],
                 $validated['id_depa']
             );
@@ -227,14 +271,20 @@ class ChatController extends Controller
     /**
      * Get unread message count
      */
-    public function getUnreadCount(Request $request, $usuario_id): JsonResponse
+    public function getUnreadCount(Request $request): JsonResponse
     {
+        $usuarioAutenticado = $request->user();
+        
+        if (!$usuarioAutenticado) {
+            return response()->json(['error' => 'No autorizado'], 401);
+        }
+
         $validated = $request->validate([
             'id_depa' => 'required|integer',
         ]);
 
-        $unread = Mensaje::where('id_depa', $validated['id_depa'])
-            ->where('destinatario_id', $usuario_id)
+        $unread = Mensaje::where('id_depaD', $validated['id_depa'])
+            ->where('destinatario', $usuarioAutenticado->id)
             ->where('leido', false)
             ->count();
 
