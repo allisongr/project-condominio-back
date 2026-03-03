@@ -252,6 +252,51 @@ class AuthController extends Controller
     }
 
     /**
+     * Eliminar un dispositivo específico (token)
+     */
+    public function deleteDevice(Request $request, $deviceId): JsonResponse
+    {
+        try {
+            $usuario = $request->user();
+            $currentToken = $request->bearerToken();
+
+            // Obtener el token a eliminar
+            $token = $usuario->tokens()->find($deviceId);
+
+            if (!$token) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Dispositivo no encontrado',
+                ], 404);
+            }
+
+            // No permitir eliminar el dispositivo actual
+            if ($token->plainTextToken === $currentToken) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No puedes eliminar el dispositivo actual',
+                ], 422);
+            }
+
+            // Eliminar el token
+            $token->delete();
+
+            \Log::info('Dispositivo eliminado - Usuario: ' . $usuario->id . ', Token ID: ' . $deviceId);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Dispositivo eliminado exitosamente',
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error al eliminar dispositivo: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
      * Cambiar contraseña del usuario autenticado
      */
     public function changePassword(Request $request): JsonResponse

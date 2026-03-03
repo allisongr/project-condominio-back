@@ -20,6 +20,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::post('/auth/logout-all-devices', [AuthController::class, 'logoutAllDevices']);
     Route::get('/auth/devices', [AuthController::class, 'getDevices']);
+    Route::delete('/auth/devices/{deviceId}', [AuthController::class, 'deleteDevice']);
     Route::post('/auth/change-password', [AuthController::class, 'changePassword']);
 
     // Admin routes (protected by admin middleware)
