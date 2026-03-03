@@ -7,10 +7,8 @@ return [
     | Cross-Origin Resource Sharing (CORS) Configuration
     |--------------------------------------------------------------------------
     |
-    | Here you may configure your settings for cross-origin resource sharing
-    | or "CORS". This determines what cross-origin requests can be executed
-    | by this Laravel application. The values that you may change are any
-    | one that is presented below.
+    | Configuración ultra-permisiva para desarrollo local en redes privadas.
+    | TODAS las IPs privadas y localhost están permitidas.
     |
     */
 
@@ -18,9 +16,19 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174', 'http://10.1.2.127:5173', 'http://10.1.2.127:5174', '*'],
+    // URLs específicas conocidas
+    'allowed_origins' => [
+        'http://localhost:5173',
+        'http://localhost:5174',
+        'http://127.0.0.1:5173',
+        'http://127.0.0.1:5174',
+    ],
 
-    'allowed_origins_patterns' => [],
+    // Patrones regex para CUALQUIER red local
+    'allowed_origins_patterns' => [
+        // Acepta cualquier origen HTTP/HTTPS (perfecto para desarrollo)
+        '#^https?://.*$#',
+    ],
 
     'allowed_headers' => ['*'],
 
@@ -31,3 +39,4 @@ return [
     'supports_credentials' => true,
 
 ];
+

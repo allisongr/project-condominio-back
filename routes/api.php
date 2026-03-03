@@ -20,6 +20,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::post('/auth/logout-all-devices', [AuthController::class, 'logoutAllDevices']);
     Route::get('/auth/devices', [AuthController::class, 'getDevices']);
+    Route::post('/auth/change-password', [AuthController::class, 'changePassword']);
 
     // Admin routes (protected by admin middleware)
     Route::middleware('admin')->prefix('admin')->group(function () {
@@ -86,7 +87,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/chat/typing', [ChatController::class, 'typing']);
     
     // Get unread message count for a user
-    Route::get('/chat/{usuario_id}/unread', [ChatController::class, 'getUnreadCount']);
+    Route::get('/chat/unread', [ChatController::class, 'getUnreadCount']);
     
     // Delete a message
     Route::delete('/chat/{mensaje_id}', [ChatController::class, 'deleteMessage']);

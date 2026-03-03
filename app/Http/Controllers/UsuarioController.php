@@ -18,66 +18,69 @@ class UsuarioController extends Controller
     public function getContactos(Request $request): JsonResponse
     {
         try {
-            // Obtener el usuario actual desde la solicitud o el parámetro
-            $usuarioActualId = $request->input('usuario_actual_id') ?? $request->user()?->id ?? 1;
+            // Obtener el usuario autenticado o del parámetro
+            $usuarioActual = $request->user();
+            
+            if (!$usuarioActual) {
+                \Log::error('getContactos: No autenticado');
+                return response()->json([
+                    'error' => 'No autorizado'
+                ], 401);
+            }
 
-            // Obtener todos los usuarios
-            $usuarios = Usuario::all();
+            $usuarioActualId = $usuarioActual->id;
+            \Log::info('getContactos: Usuario actual', ['id' => $usuarioActualId]);
+
+            // Obtener todos los usuarios excepto el actual
+            $usuarios = Usuario::where('id', '!=', $usuarioActualId)
+                ->with('persona')
+                ->get();
 
             $contactos = [];
             
             foreach ($usuarios as $usuario) {
-                if ($usuario->id == $usuarioActualId) {
-                    continue;
-                }
-
                 try {
-                    $persona = Persona::find($usuario->id_persona);
-                    $perDep = PerDep::where('id_persona', $usuario->id_persona)->first();
+                    $persona = $usuario->persona;
+                    
+                    if (!$persona) {
+                        \Log::warning('Usuario sin persona', ['usuario_id' => $usuario->id]);
+                        continue;
+                    }
 
-                    // Obtener el último mensaje con este contacto
-                    $ultimoMensaje = Mensaje::where(function($query) use ($usuarioActualId, $usuario) {
-                        $query->where(function($q) use ($usuarioActualId, $usuario) {
-                            $q->where('remitente', $usuarioActualId)
-                              ->where('destinatario', $usuario->id);
-                        })->orWhere(function($q) use ($usuarioActualId, $usuario) {
-                            $q->where('remitente', $usuario->id)
-                              ->where('destinatario', $usuarioActualId);
-                        });
-                    })
-                    ->orderBy('fecha', 'desc')
-                    ->first();
+                    // Obtener el departamento del usuario
+                    $perDep = PerDep::where('id_persona', $usuario->id_persona)->first();
+                    $depa = $perDep?->id_depa ?? 101;
 
                     $contactos[] = [
                         'id' => $usuario->id,
-                        'nombre' => $persona?->nombre ?? 'N/A',
-                        'apellido' => $persona?->apellido_p ?? 'N/A',
-                        'email' => $persona?->celular ?? 'N/A',
-                        'depa' => $perDep?->id_depa ?? 101,
+                        'nombre' => $persona->nombre ?? 'N/A',
+                        'apellido' => $persona->apellido_p ?? 'N/A',
+                        'apellido_m' => $persona->apellido_m ?? '',
+                        'email' => $persona->email ?? $persona->celular ?? 'N/A',
+                        'celular' => $persona->celular ?? '',
+                        'depa' => $depa,
                         'online' => true,
-                        'mensaje' => $ultimoMensaje?->mensaje ?? 'Sin mensajes',
-                        'ultima_fecha' => $ultimoMensaje?->fecha ?? null,
                     ];
                 } catch (\Exception $e) {
-                    \Log::error('Error procesando usuario ' . $usuario->id . ': ' . $e->getMessage());
+                    \Log::error('Error procesando usuario', [
+                        'usuario_id' => $usuario->id,
+                        'error' => $e->getMessage()
+                    ]);
                     continue;
                 }
             }
 
-            // Ordenar contactos por última fecha de mensaje (más reciente primero)
-            usort($contactos, function($a, $b) {
-                if (!$a['ultima_fecha']) return 1;
-                if (!$b['ultima_fecha']) return -1;
-                return strtotime($b['ultima_fecha']) - strtotime($a['ultima_fecha']);
-            });
+            \Log::info('getContactos: Contactos cargados', ['count' => count($contactos)]);
 
             return response()->json($contactos);
         } catch (\Exception $e) {
-            \Log::error('Error en getContactos: ' . $e->getMessage());
-            \Log::error($e->getTraceAsString());
-            return response()->json([
+            \Log::error('Error en getContactos', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'error' => 'Error al cargar contactos',
+                'message' => $e->getMessage()
             ], 500);
         }
     }
