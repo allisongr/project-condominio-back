@@ -12,12 +12,35 @@ use App\Http\Controllers\AdminController;
 // Auth routes (without middleware)
 Route::post('/auth/login', [AuthController::class, 'login']);
 Route::post('/auth/verify-email', [AuthController::class, 'verifyEmail']);
+Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
+Route::post('/auth/verify-reset-code', [AuthController::class, 'verifyResetCode']);
+Route::post('/auth/reset-password', [AuthController::class, 'resetPassword']);
+
+// Debug endpoint - solo en desarrollo
+if (env('APP_DEBUG')) {
+    Route::get('/auth/debug-reset-code/{email}', function ($email) {
+        $usuario = \App\Models\Usuario::where('email', $email)->first();
+        if (!$usuario) {
+            return response()->json(['error' => 'Usuario no encontrado'], 404);
+        }
+        return response()->json([
+            'email' => $usuario->email,
+            'password_reset_code' => $usuario->password_reset_code,
+            'password_reset_expires_at' => $usuario->password_reset_expires_at,
+            'expires_in_seconds' => $usuario->password_reset_expires_at ? now()->diffInSeconds($usuario->password_reset_expires_at, false) : null,
+        ]);
+    });
+}
 
 // Protected routes with Sanctum
 Route::middleware('auth:sanctum')->group(function () {
     // Auth routes
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
+    Route::post('/auth/logout-all-devices', [AuthController::class, 'logoutAllDevices']);
+    Route::get('/auth/devices', [AuthController::class, 'getDevices']);
+    Route::delete('/auth/devices/{deviceId}', [AuthController::class, 'deleteDevice']);
+    Route::post('/auth/change-password', [AuthController::class, 'changePassword']);
 
     // Admin routes (protected by admin middleware)
     Route::middleware('admin')->prefix('admin')->group(function () {
@@ -84,7 +107,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/chat/typing', [ChatController::class, 'typing']);
     
     // Get unread message count for a user
-    Route::get('/chat/{usuario_id}/unread', [ChatController::class, 'getUnreadCount']);
+    Route::get('/chat/unread', [ChatController::class, 'getUnreadCount']);
     
     // Delete a message
     Route::delete('/chat/{mensaje_id}', [ChatController::class, 'deleteMessage']);

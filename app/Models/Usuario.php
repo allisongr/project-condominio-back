@@ -22,11 +22,15 @@ class Usuario extends Model implements Authenticatable, MustVerifyEmail
         'admin',
         'email_verified_at',
         'email_verification_token',
+        'password_reset_code',
+        'password_reset_expires_at',
+        'password_reset_token',
     ];
 
     protected $casts = [
         'admin' => 'boolean',
         'email_verified_at' => 'datetime',
+        'password_reset_expires_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
@@ -34,6 +38,7 @@ class Usuario extends Model implements Authenticatable, MustVerifyEmail
     protected $hidden = [
         'pass',
         'email_verification_token',
+        'password_reset_token',
     ];
     
     /**
