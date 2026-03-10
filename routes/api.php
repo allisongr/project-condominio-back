@@ -9,32 +9,16 @@ use App\Http\Controllers\UsuarioController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\AdminController;
 
-// Auth routes (without middleware)
+// Rutas de autenticación (sin middleware)
 Route::post('/auth/login', [AuthController::class, 'login']);
 Route::post('/auth/verify-email', [AuthController::class, 'verifyEmail']);
 Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
 Route::post('/auth/verify-reset-code', [AuthController::class, 'verifyResetCode']);
 Route::post('/auth/reset-password', [AuthController::class, 'resetPassword']);
 
-// Debug endpoint - solo en desarrollo
-if (env('APP_DEBUG')) {
-    Route::get('/auth/debug-reset-code/{email}', function ($email) {
-        $usuario = \App\Models\Usuario::where('email', $email)->first();
-        if (!$usuario) {
-            return response()->json(['error' => 'Usuario no encontrado'], 404);
-        }
-        return response()->json([
-            'email' => $usuario->email,
-            'password_reset_code' => $usuario->password_reset_code,
-            'password_reset_expires_at' => $usuario->password_reset_expires_at,
-            'expires_in_seconds' => $usuario->password_reset_expires_at ? now()->diffInSeconds($usuario->password_reset_expires_at, false) : null,
-        ]);
-    });
-}
-
-// Protected routes with Sanctum
+// Rutas protegidas con Sanctum
 Route::middleware('auth:sanctum')->group(function () {
-    // Auth routes
+    // Rutas de autenticación
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::post('/auth/logout-all-devices', [AuthController::class, 'logoutAllDevices']);
@@ -42,7 +26,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/auth/devices/{deviceId}', [AuthController::class, 'deleteDevice']);
     Route::post('/auth/change-password', [AuthController::class, 'changePassword']);
 
-    // Admin routes (protected by admin middleware)
+    // Rutas de administrador (protegidas por middleware de admin)
     Route::middleware('admin')->prefix('admin')->group(function () {
         Route::get('/usuarios', [AdminController::class, 'index']);
         Route::post('/usuarios', [AdminController::class, 'store']);
@@ -52,31 +36,31 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/usuarios/{id}/resend-verification', [AdminController::class, 'resendVerification']);
     });
 
-    // Broadcasting auth endpoint (for WebSocket private channels)
+    // Endpoint de autenticación de transmisión (para canales privados de WebSocket)
     Route::post('/broadcasting/auth', function (Request $request) {
         $usuario = $request->user();
         
-        \Log::info('Broadcasting auth request', [
+        \Log::info('Solicitud de autenticación de transmisión', [
             'usuario_id' => $usuario->id,
             'channel_name' => $request->input('channel_name'),
             'socket_id' => $request->input('socket_id'),
         ]);
         
         if (!$usuario) {
-            \Log::error('Broadcasting auth: Usuario no autenticado');
+            \Log::error('Autenticación de transmisión: Usuario no autenticado');
             return response()->json(['error' => 'Usuario no autenticado'], 403);
         }
         
-        \Log::info('Broadcasting auth: Usuario autenticado', ['usuario_id' => $usuario->id]);
+        \Log::info('Autenticación de transmisión: Usuario autenticado', ['usuario_id' => $usuario->id]);
         
         $response = Broadcast::auth($request);
-        \Log::info('Broadcasting auth response', ['response' => $response]);
+        \Log::info('Respuesta de autenticación de transmisión', ['response' => $response]);
         
         return $response;
     });
 
     /**
-     * Usuario Routes
+     * Rutas de Usuario
      */
     Route::get('/usuarios/contactos', [UsuarioController::class, 'getContactos']);
     Route::get('/usuarios/{id}', [UsuarioController::class, 'show']);
@@ -84,31 +68,31 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/usuarios/{id}/departamento', [UsuarioController::class, 'getDepartamento']);
 
     /**
-     * Chat Routes - WebSocket enabled
+     * Rutas de Chat - WebSocket habilitado
      */
     
-    // Debug endpoints
+    // Endpoints de depuración
     Route::get('/chat/debug/messages', [ChatController::class, 'debugMessages']);
     Route::delete('/chat/debug/clear', [ChatController::class, 'clearDebugMessages']);
     
-    // Send a new message
+    // Enviar un nuevo mensaje
     Route::post('/chat/send', [ChatController::class, 'sendMessage']);
     
-    // Get messages for a departamento and optionally filter by contacto
+    // Obtener mensajes para un departamento y opcionalmente filtrar por contacto
     Route::get('/chat/messages', [ChatController::class, 'getMessages']);
     
-    // Get messages for a specific departamento (legacy route)
+    // Obtener mensajes para un departamento específico (ruta heredada)
     Route::get('/chat/{id_depa}/messages', [ChatController::class, 'getMessages']);
     
-    // Mark message as read
+    // Marcar mensaje como leído
     Route::put('/chat/{mensaje_id}/read', [ChatController::class, 'markAsRead']);
     
-    // Broadcast typing indicator
+    // Transmitir indicador de escritura
     Route::post('/chat/typing', [ChatController::class, 'typing']);
     
-    // Get unread message count for a user
+    // Obtener el conteo de mensajes no leídos para un usuario
     Route::get('/chat/unread', [ChatController::class, 'getUnreadCount']);
     
-    // Delete a message
+    // Eliminar un mensaje
     Route::delete('/chat/{mensaje_id}', [ChatController::class, 'deleteMessage']);
 });
