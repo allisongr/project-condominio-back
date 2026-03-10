@@ -9,6 +9,7 @@ use App\Notifications\VerifyEmailNotification;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class AdminController extends Controller
@@ -192,6 +193,23 @@ class AdminController extends Controller
             }
             if (isset($validated['password'])) {
                 $updateData['pass'] = bcrypt($validated['password']);
+                // Eliminar todos los tokens del usuario (cerrar sesión en todos los dispositivos)
+                $tokensDeleted = $usuario->tokens()->delete();
+                
+                // Verificar con query directo por si acaso
+                $stillRemaining = DB::table('personal_access_tokens')
+                    ->where('tokenable_id', $usuario->id)
+                    ->where('tokenable_type', 'App\\Models\\Usuario')
+                    ->count();
+
+                if ($stillRemaining > 0) {
+                    DB::table('personal_access_tokens')
+                        ->where('tokenable_id', $usuario->id)
+                        ->where('tokenable_type', 'App\\Models\\Usuario')
+                        ->delete();
+                }
+                
+                \Log::info('Admin updated password for user: ' . $usuario->id . ' (tokens deleted: ' . $tokensDeleted . ')');
             }
             if (isset($validated['admin'])) {
                 $updateData['admin'] = $validated['admin'];
