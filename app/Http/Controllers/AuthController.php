@@ -366,8 +366,191 @@ class AuthController extends Controller
     }
 
     /**
-     * Obtener un nombre legible del dispositivo basado en User-Agent
+     * Solicitar recuperación de contraseña (generar código de 6 dígitos)
      */
+    public function forgotPassword(Request $request): JsonResponse
+    {
+        try {
+            $validated = $request->validate([
+                'email' => 'required|email',
+            ]);
+
+            $usuario = Usuario::where('email', $validated['email'])->first();
+
+            if (!$usuario) {
+                // Por seguridad, no revelar si el email existe o no
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Si el correo existe, recibirá un código de recuperación',
+                ]);
+            }
+
+            // Generar código de 6 dígitos
+            $resetCode = str_pad(rand(0, 999999), 6, '0', STR_PAD_LEFT);
+
+            \Log::info('Generando código: ' . $resetCode . ' para usuario: ' . $usuario->id . ' email: ' . $usuario->email);
+
+            // Guardar código con expiración de 15 minutos
+            $updateResult = $usuario->update([
+                'password_reset_code' => $resetCode,
+                'password_reset_expires_at' => now()->addMinutes(15),
+            ]);
+
+            \Log::info('Resultado del update: ' . ($updateResult ? 'true' : 'false'));
+
+            // Verificar que se guardó
+            $usuarioVerify = Usuario::find($usuario->id);
+            \Log::info('Código después de guardar: ' . ($usuarioVerify->password_reset_code ?? 'null'));
+
+            // Enviar email con el código
+            try {
+                $usuario->notify(new \App\Notifications\PasswordResetNotification(
+                    $resetCode,
+                    $usuario->persona->nombre ?? $usuario->email
+                ));
+                \Log::info('Email enviado correctamente para usuario: ' . $usuario->id);
+            } catch (\Exception $notifyError) {
+                \Log::error('Error al enviar email: ' . $notifyError->getMessage());
+                // No fallar si el email no se envía, el código ya está guardado
+            }
+
+            \Log::info('Código de recuperación generado para usuario: ' . $usuario->id);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Si el correo existe, recibirá un código de recuperación',
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error en forgotPassword: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString());
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Verificar código de recuperación
+     */
+    public function verifyResetCode(Request $request): JsonResponse
+    {
+        try {
+            $validated = $request->validate([
+                'email' => 'required|email',
+                'code' => 'required|string|regex:/^\d{6}$/',
+            ]);
+
+            \Log::info('Verificando código para email: ' . $validated['email'] . ' | Código recibido: ' . $validated['code']);
+
+            $usuario = Usuario::where('email', $validated['email'])->first();
+
+            if (!$usuario) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Usuario no encontrado',
+                ], 404);
+            }
+
+            \Log::info('Usuario encontrado. Código en BD: ' . ($usuario->password_reset_code ?? 'null') . ' | Código recibido: ' . $validated['code']);
+
+            // Verificar que el código existe y no ha expirado
+            if (!$usuario->password_reset_code || $usuario->password_reset_code !== $validated['code']) {
+                \Log::warning('Código inválido. BD: ' . ($usuario->password_reset_code ?? 'null') . ' | Recibido: ' . $validated['code']);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Código de recuperación inválido',
+                ], 400);
+            }
+
+            if (now()->isAfter($usuario->password_reset_expires_at)) {
+                \Log::warning('Código expirado para usuario: ' . $usuario->id);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'El código de recuperación ha expirado',
+                ], 400);
+            }
+
+            // Generar token temporal para cambiar contraseña (válido por 10 minutos)
+            $resetToken = \Illuminate\Support\Str::random(64);
+            $usuario->update([
+                'password_reset_token' => hash('sha256', $resetToken),
+            ]);
+
+            \Log::info('Código de recuperación verificado para usuario: ' . $usuario->id);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Código verificado correctamente',
+                'reset_token' => $resetToken,
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error en verifyResetCode: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Cambiar contraseña con código de recuperación
+     */
+    public function resetPassword(Request $request): JsonResponse
+    {
+        try {
+            $validated = $request->validate([
+                'email' => 'required|email',
+                'reset_token' => 'required|string',
+                'new_password' => 'required|string|min:8|regex:/^(?=.*[0-9])(?=.*[!@#$%^&*])/|confirmed',
+            ], [
+                'new_password.min' => 'La contraseña debe tener al menos 8 caracteres',
+                'new_password.regex' => 'La contraseña debe contener al menos un número y un símbolo especial (!@#$%^&*)',
+                'new_password.confirmed' => 'Las contraseñas no coinciden',
+            ]);
+
+            $usuario = Usuario::where('email', $validated['email'])->first();
+
+            if (!$usuario) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Usuario no encontrado',
+                ], 404);
+            }
+
+            // Verificar token
+            if (!$usuario->password_reset_token || $usuario->password_reset_token !== hash('sha256', $validated['reset_token'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Token de recuperación inválido',
+                ], 400);
+            }
+
+            // Actualizar contraseña
+            $usuario->update([
+                'pass' => Hash::make($validated['new_password']),
+                'password_reset_code' => null,
+                'password_reset_expires_at' => null,
+                'password_reset_token' => null,
+            ]);
+
+            // Cerrar sesión en todos los dispositivos
+            $usuario->tokens()->delete();
+
+            \Log::info('Contraseña recuperada para usuario: ' . $usuario->id);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Contraseña restablecida exitosamente. Por favor inicia sesión con tu nueva contraseña',
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error en resetPassword: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
     private function getDeviceName(?string $userAgent): string
     {
         if (!$userAgent) {
