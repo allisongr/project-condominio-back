@@ -21,6 +21,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Register middleware aliases
         $middleware->alias([
             'admin' => \App\Http\Middleware\CheckAdmin::class,
+            'auth.api' => \App\Http\Middleware\AuthenticateApi::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
